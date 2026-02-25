@@ -51,7 +51,8 @@ GEN_DIR    := gen_engine
 
 # ── Source Files ─────────────────────────────────────────────────────────────
 
-COMMON_SRC := $(COMMON_DIR)/logging.c
+COMMON_SRC := $(COMMON_DIR)/logging.c \
+              $(COMMON_DIR)/loader.c
 
 C2_SRC     := $(C2_DIR)/crypto.c \
               $(C2_DIR)/c2_client.c

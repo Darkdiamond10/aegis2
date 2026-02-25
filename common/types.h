@@ -47,6 +47,7 @@ typedef enum {
     AEGIS_ERR_MIGRATION       = -18,
     AEGIS_ERR_TIMEOUT         = -19,
     AEGIS_ERR_AUTH             = -20,
+    AEGIS_ERR_INVALID_PARAM    = -21,
 } aegis_result_t;
 
 /* ── Node Types ──────────────────────────────────────────────────────────── */

