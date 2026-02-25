@@ -219,11 +219,29 @@ static size_t build_http_post(char *buf, size_t buf_cap, const char *host,
 
 /* ── Internal: HTTP Response Parser (minimal) ────────────────────────────── */
 
+/* Portable replacement for memmem (GNU extension) */
+static const void *aegis_memmem(const void *haystack, size_t haystacklen,
+                                const void *needle, size_t needlelen) {
+  if (!haystack || !needle || needlelen > haystacklen)
+    return NULL;
+
+  const uint8_t *h = (const uint8_t *)haystack;
+  const uint8_t *n = (const uint8_t *)needle;
+
+  for (size_t i = 0; i <= (haystacklen - needlelen); i++) {
+    if (h[i] == n[0]) {
+      if (memcmp(h + i, n, needlelen) == 0)
+        return h + i;
+    }
+  }
+  return NULL;
+}
+
 static aegis_result_t parse_http_response(const uint8_t *resp, size_t resp_len,
                                           const uint8_t **body_out,
                                           size_t *body_len) {
   /* Find the \r\n\r\n header/body separator */
-  const char *sep = memmem(resp, resp_len, "\r\n\r\n", 4);
+  const char *sep = aegis_memmem(resp, resp_len, "\r\n\r\n", 4);
   if (!sep)
     return AEGIS_ERR_NETWORK;
 
