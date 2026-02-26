@@ -137,9 +137,9 @@ def run_server(port=443):
     httpd = http.server.HTTPServer(server_address, AegisC2Handler)
 
     # Wrap with SSL
-    httpd.socket = ssl.wrap_socket(httpd.socket,
-                                 certfile='./server.pem',
-                                 server_side=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile='./server.pem')
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
 
     while SERVER_RUNNING:
         try:
@@ -305,7 +305,7 @@ def main_loop():
     global SERVER_RUNNING
 
     # Auto-start listener thread
-    t = threading.Thread(target=run_server, args=(4443,))
+    t = threading.Thread(target=run_server, args=(8443,))
     t.daemon = True
     t.start()
 
@@ -327,7 +327,7 @@ def main_loop():
         elif choice == '4':
             menu_advanced_config()
         elif choice == '5':
-            print("Listener is already running on port 4443 (mock).")
+            print("Listener is already running on port 8443 (mock).")
             time.sleep(1)
         elif choice == '0':
             SERVER_RUNNING = False
