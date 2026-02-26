@@ -81,6 +81,13 @@ static bool is_in_list(const char *name, const char *csv_list) {
 /* ── Debugger Detection: ptrace ──────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_ptrace(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_PTRACE
+    return AEGIS_OK;
+  #endif
+
   /*
    * A process can only have one tracer.  If ptrace(PTRACE_TRACEME)
    * fails, something is already attached to us.
@@ -111,6 +118,13 @@ aegis_result_t aegis_aa_check_ptrace(void) {
 /* ── Debugger Detection: TracerPid ───────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_tracer_pid(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_TRACER_PID
+    return AEGIS_OK;
+  #endif
+
   char buf[4096];
   if (read_file_buf("/proc/self/status", buf, sizeof(buf)) < 0)
     return AEGIS_OK; /* Can't read = can't check, assume clean */
@@ -128,6 +142,13 @@ aegis_result_t aegis_aa_check_tracer_pid(void) {
 /* ── Timing: RDTSC Gap ───────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_rdtsc_timing(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_RDTSC
+    return AEGIS_OK;
+  #endif
+
   /*
    * When running under a debugger or single-stepping, the cycle count
    * between two RDTSC instructions will be abnormally high due to
@@ -151,6 +172,13 @@ aegis_result_t aegis_aa_check_rdtsc_timing(void) {
 /* ── Timing: Sleep Acceleration ──────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_sleep_timing(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_SLEEP_TIMING
+    return AEGIS_OK;
+  #endif
+
   /*
    * Sandboxes often accelerate time to make malware "detonate" faster.
    * We sleep for a known duration and check whether wall-clock time
@@ -183,6 +211,13 @@ aegis_result_t aegis_aa_check_sleep_timing(void) {
 /* ── Hostile Process Scanning ────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_hostile_procs(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_HOSTILE_PROCS
+    return AEGIS_OK;
+  #endif
+
   DIR *proc_dir = opendir("/proc");
   if (!proc_dir)
     return AEGIS_OK; /* Can't scan, assume clean */
@@ -218,6 +253,13 @@ aegis_result_t aegis_aa_check_hostile_procs(void) {
 /* ── VM Detection: CPUID ─────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_vm(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_VM_CPUID
+    return AEGIS_OK;
+  #endif
+
   /*
    * CPUID leaf 0x1, ECX bit 31 = hypervisor present bit.
    * This is the canonical way to detect virtualization.
@@ -274,6 +316,13 @@ aegis_result_t aegis_aa_check_vm(void) {
 /* ── VM Detection: MAC Address OUI ───────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_vm_mac(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_VM_MAC
+    return AEGIS_OK;
+  #endif
+
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0)
     return AEGIS_OK;
@@ -309,6 +358,13 @@ aegis_result_t aegis_aa_check_vm_mac(void) {
 /* ── Sandbox: Resource Check ─────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_sandbox_resources(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_SANDBOX_RESOURCES
+    return AEGIS_OK;
+  #endif
+
   /* CPU cores */
   long cores = sysconf(_SC_NPROCESSORS_ONLN);
   if (cores > 0 && cores < AEGIS_AA_MIN_CPU_CORES)
@@ -342,6 +398,13 @@ aegis_result_t aegis_aa_check_sandbox_resources(void) {
 /* ── Container Detection ─────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_container(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_CONTAINER
+    return AEGIS_OK;
+  #endif
+
   /* Check for /.dockerenv */
   if (access("/.dockerenv", F_OK) == 0)
     return AEGIS_ERR_SANDBOX;
@@ -364,6 +427,13 @@ aegis_result_t aegis_aa_check_container(void) {
 /* ── Breakpoint Detection ────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_breakpoints(void *code_start, size_t code_len) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_BREAKPOINTS
+    return AEGIS_OK;
+  #endif
+
   if (!code_start || code_len == 0)
     return AEGIS_OK;
 
@@ -391,6 +461,13 @@ aegis_result_t aegis_aa_check_breakpoints(void *code_start, size_t code_len) {
 /* ── System Uptime ───────────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_uptime(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_UPTIME
+    return AEGIS_OK;
+  #endif
+
   struct sysinfo si;
   if (sysinfo(&si) != 0)
     return AEGIS_OK;
@@ -404,6 +481,13 @@ aegis_result_t aegis_aa_check_uptime(void) {
 /* ── LD_PRELOAD Detection ────────────────────────────────────────────────── */
 
 aegis_result_t aegis_aa_check_ld_preload(void) {
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
+  #ifndef AEGIS_AA_ENABLE_LD_PRELOAD
+    return AEGIS_OK;
+  #endif
+
   /*
    * If LD_PRELOAD is set and we didn't set it, someone may be
    * hooking our library calls.
@@ -438,6 +522,10 @@ aegis_result_t aegis_aa_full_check(void) {
    *
    * Short-circuit on first failure.
    */
+
+  #ifdef AEGIS_DISABLE_AA
+    return AEGIS_OK;
+  #endif
 
   aegis_result_t rc;
 

